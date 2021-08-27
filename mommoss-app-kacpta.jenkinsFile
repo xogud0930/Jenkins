@@ -1,0 +1,130 @@
+pipeline {
+    agent { node 'master' }
+    environment {
+        MAIN = "mommoss-app-kacpta"
+        BRANCH = "${env.COMMIT_ID ? env.HOOK_BRANCH : params.TEST_BRANCH}"
+    }
+    tools {
+        nodejs "node16"
+        git "git"
+    }
+    stages {
+        stage('prepare') {
+            steps {
+                sh '''#!/bin/bash
+                    echo Date : $TODAY
+                    echo Branch : $BRANCH
+                    echo Commit : $COMMIT_MSG
+                    MSG="💡[Jenkins]💡\n🐙Mommoss App🐙\n$COMMIT_AUTHOR\n20${TODAY:0:2}-${TODAY:2:2}-${TODAY:4:2} ${TODAY:7:2}:${TODAY:9:2}:${TODAY:11:2}\n============Commit============\n$COMMIT_MSG\n==============================="
+                    node ../noticeMommoss/noticeMommoss.js 20 "$MSG"
+                '''
+            }
+        }
+        stage('git clone') {
+            steps {
+                sh '''#!/bin/bash
+                    if [ ! -d ./$MAIN ]; then
+                        git clone git@github.com:Ablestor/mommoss-app-kacpta.git
+                    else
+                        echo "$MAIN OK"
+                    fi
+                ''' 
+            }
+        }
+        stage('git pull') {
+            steps {
+                sh '''#!/bin/bash
+                    cd $MAIN
+
+                    git fetch --all
+                    git reset --hard origin/$BRANCH
+                    git pull origin $BRANCH
+                    
+                    if [ "$COMMIT_ID" != "none" ]; then
+                        echo $COMMIT_MSG
+                        git checkout $COMMIT_ID
+                    fi
+
+                    npm install -g expo expo-cli --legacy-peer-deps
+                    npm install --save --legacy-peer-deps
+                    expo login -u dev@ablestor.com -p $EXPO_PSW
+                '''
+            }
+        }
+        stage('build') {
+            steps {
+                sh'''#!/bin/bash
+                    cd $MAIN
+
+                    OLD_IFS=$OLD_IFS
+                    IFS=*
+                    COMMIT_SPLIT=($COMMIT_MSG)
+                    IFS=$OLD_IFS
+                    COMMIT=${COMMIT_SPLIT[0]}
+                    COMMAND=${COMMIT_SPLIT[1]}
+                    CHANNEL=${COMMIT_SPLIT[2]}
+                    OPTION=${COMMIT_SPLIT[3]}
+                    
+                    echo "COMMIT : $COMMIT"
+                    MSG="💡[Jenkins]💡\n🐙Mommoss App🐙\nMommoss App jenkins OK🙆‍♂️"
+
+                    if [ "$CHANNEL" != "main" ] && [ "$CHANNEL" != "test" ]; then
+                        if [ "$CHANNEL" == "ba" ] || [ "$CHANNEL" == "bi" ]; then
+                            OPTION=$CHANNEL
+                        fi
+                        CHANNEL="test"
+                        echo "channel is $CHANNEL"
+                        echo "option is $OPTION"
+                    fi
+
+                    echo "check -$COMMAND -$CHANNEL -$OPTION"
+
+                    if [ "$CHANNEL" == "main" ]; then
+                        CHANNEL="default"
+                    fi
+
+                    if [ "$COMMAND" == "publish" ]; then
+                        echo "expo $CHANNEL publish"
+                        expo publish --release-channel $CHANNEL
+                        MSG="💡[Jenkins]💡\n🐙Mommoss App🐙\n$CHANNEL channel publish success🙆‍♂️"
+                    fi
+
+                    if [ "$COMMAND" == "release" ]; then
+                        if [ "$OPTION" == "ba" ]; then
+                            echo "expo release android"
+                            expo ba --release-channel $CHANNEL
+                            MSG="💡[Jenkins]💡\n🐙Mommoss App🐙\nAndroid $CHANNEL channel Release success🙆‍♂️"
+                        elif [ "$OPTION" == "bi" ]; then
+                            echo "expo release ios"
+                            expo bi --release-channel $CHANNEL
+                            MSG="💡[Jenkins]💡\n🐙Mommoss App🐙\nIOS $CHANNEL channel Release success🙆‍♂️"
+                        else
+                            echo "expo release android&ios"
+                            expo ba --release-channel $CHANNEL
+                            expo bi --release-channel $CHANNEL
+                            MSG="💡[Jenkins]💡\n🐙Mommoss App🐙\nAndroid&IOS $CHANNEL channel Release success🙆‍♂️"
+                        fi
+                    fi
+
+                    node ../../noticeMommoss/noticeMommoss.js 20 "$MSG"
+                '''
+            }
+        }
+    }
+    post {
+        failure {
+            sh'''#!/bin/bash
+            echo "Build failed"
+            MSG="💡[Jenkins]💡\n🐙Mommoss App🐙\nMommoss App jenkins failed❌"
+            node ../noticeMommoss/noticeMommoss.js 20 "$MSG"
+            '''
+        }
+        aborted {
+            sh'''#!/bin/bash
+            echo "build aborted"
+            MSG="💡[Jenkins]💡\n🐙Mommoss App🐙\nMommoss App jenkins aborted⛔"
+            node ../noticeMommoss/noticeMommoss.js 20 "$MSG"
+            '''
+        }
+    }
+}

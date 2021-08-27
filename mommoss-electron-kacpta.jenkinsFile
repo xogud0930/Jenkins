@@ -1,0 +1,423 @@
+pipeline {
+    agent none
+    environment {
+        MAIN = "mommoss-electron-kacpta"
+        BUILD = "mommoss-electron-build"
+        BRANCH = "${env.COMMIT_ID ? env.HOOK_BRANCH : params.TEST_BRANCH}"
+        MAC_IP = "ablestor@192.168.10.118"
+        WIN_IP = "ablestor-pc1@192.168.10.153"
+        DSM_IP = "kth@192.168.10.102"
+        UPDATE_IP = "ubuntu@ec2-15-164-224-151.ap-northeast-2.compute.amazonaws.com"
+    }
+    tools {
+        nodejs "node14"
+        git "git"
+    }
+    stages {
+        stage('prepare') {
+            agent { node 'master' }
+            steps {
+                sh '''#!/bin/bash
+                    echo Date : $TODAY
+                    echo Branch : $BRANCH
+                    echo Commit : $COMMIT_MSG
+                    MSG="💡[Jenkins]💡\n🐳Mommoss Electron🐳\n$COMMIT_AUTHOR\n20${TODAY:0:2}-${TODAY:2:2}-${TODAY:4:2} ${TODAY:7:2}:${TODAY:9:2}:${TODAY:11:2}\n============Commit============\n$COMMIT_MSG\n==============================="
+                    node ../noticeMommoss/noticeMommoss.js 16298 "$MSG"
+                '''
+            }
+        }
+        stage('Parallel Build') {
+            parallel {
+                stage("mac build") {
+                    agent { node 'mac-mini' }
+                    stages {
+                        stage('[mac]git clone') {
+                            steps {
+                                sh '''#!/bin/bash
+                                    if [ ! -d ./$MAIN ]; then
+                                        git clone git@github.com:Ablestor/mommoss-electron-kacpta.git
+                                    else
+                                        echo "$MAIN OK"
+                                    fi
+
+                                    if [ ! -d ./$BUILD ]; then
+                                        git clone git@github.com:Ablestor/mommoss-electron-build.git
+                                    else
+                                        echo "$BUILD OK"
+                                    fi
+
+                                    if [ ! -f ./$MAIN/public/mommoss.provisionprofile ]; then
+                                        cp /Users/ablestor/Dev/Git/electron_key/mommoss.provisionprofile ./$MAIN/public/
+                                    else
+                                        echo "mommoss.provisionprofile OK"
+                                    fi
+
+                                    if [ ! -f ./$BUILD/.env ]; then
+                                        cp /Users/ablestor/Dev/Git/electron_key/.env ./$BUILD/
+                                    else
+                                        echo ".env OK"
+                                    fi
+                                    
+                                    security unlock-keychain -p able login.keychain
+                                '''
+                            }
+                        }
+                        stage('[mac]git reset') {
+                            when { expression { return params.GIT_RESET } }
+                            steps {
+                                sh '''#!/bin/bash
+                                    cd $MAIN
+                                    rm -rf node_modules
+                                    rm -rf yarn.lock
+                                    
+                                    cd ../$BUILD
+                                    rm -rf node_modules
+                                    rm -rf yarn.lock
+                                '''
+                            }
+                        }
+                        stage('[mac]main git pull') {
+                            when { expression { return params.GIT_PULL } }
+                            steps {
+                                sh '''#!/bin/bash
+                                    cd $MAIN
+                                    
+                                    git fetch --all
+                                    git reset --hard origin/$BRANCH
+                                    git pull
+                                    
+                                    if [ "$COMMIT_ID" != "none" ]; then
+                                        echo $COMMIT_MSG
+                                        git checkout $COMMIT_ID
+                                    fi
+
+                                    yarn
+
+                                    cp -f ./package.json ~/workspace/package.json
+                                '''
+                            }
+                        }
+                        stage('[mac]build git pull') {
+                            when { expression { return params.BUILD_GIT_PULL } }
+                            steps {
+                                sh '''#!/bin/bash  
+                                    cd $BUILD
+
+                                    git fetch --all
+                                    git reset --hard origin/main
+                                    git pull origin main
+                                    yarn
+                                '''
+                            }
+                        }
+                        stage('[mac]version check') {
+                            steps {
+                                sh '''#!/bin/bash
+                                    cp -f /Users/ablestor/workspace/nortarization.js ./$BUILD/
+                                    cp -f ./$MAIN/package.json ../
+
+                                    if [ $TEST == true ]; then
+                                        cd $MAIN
+                                        echo "Test version is $VERSION_CHANGE"
+                                        jq --arg v $VERSION_CHANGE '.version=$v' package.json | sponge package.json
+                                        cd ..
+                                    fi
+                                    VERSION=`jq .version ./$MAIN/package.json`
+                                    VERSION=`sed -e 's/^"//' -e 's/"$//' <<<$VERSION`
+                                    cd $BUILD
+                                    jq --arg v $VERSION '.version=$v' package.json | sponge package.json
+                                '''
+                            }
+                        }
+                        stage('[mac]mac build') {
+                            when { expression { return params.MAC_BUILD } }
+                            steps {
+                                sh '''#!/bin/bash
+                                    rm -rf ../installer/mac
+                                    mkdir ../installer/mac
+
+                                    cd $BUILD
+                                    jq '.build.mac.target={"target": "default","arch": ["x64","arm64"]}' package.json | sponge package.json
+                                    jq 'del(.build.mac.artifactName)'  package.json | sponge package.json
+
+                                    cd ../$MAIN
+                                    jq '.build.mac.target={"target": "default","arch": ["x64","arm64"]}' package.json | sponge package.json
+                                    jq 'del(.build.mac.artifactName)'  package.json | sponge package.json
+                                    
+                                    #yarn run bm
+                                    export CSC_IDENTITY_AUTO_DISCOVERY=true
+                                    export LANG=ko_KR.UTF-8
+                                    export CI=false
+
+                                    rm -rf ./dist
+                                    rm -rf ./build
+                                    rm -rf ../$BUILD/dist
+                                    rm -rf ../$BUILD/build
+
+                                    yarn run postinstall
+                                    yarn run build
+
+                                    mv ./build ../$BUILD/build
+                                '''
+                            }
+                        }
+                        stage('[mac]mac signing') {
+                            when { expression { return params.MAC_BUILD } }
+                            steps {
+                                sh '''#!/bin/bash
+
+                                    if [ "${COMMIT_MSG%:*}" == "build" ] && [ "$TEST" == "false" ]; then
+                                        cd $BUILD
+
+                                        yarn run postinstall
+                                        yarn run release
+
+                                        if [ $NORTARIZATION == true ]; then
+                                            echo "Run mac nortarization"
+                                            node nortarization.js -i
+                                            node nortarization.js -m
+                                        else
+                                            echo "Not run mac nortarization"
+                                        fi
+
+                                        version=`yq e '.version' ./dist/latest-mac.yml`
+
+                                        FILE1="mommoss-$version-mac.zip"
+                                        FILE2="mommoss-$version-arm64-mac.zip"
+                                        FILE3="mommoss-$version.dmg"
+                                        FILE4="mommoss-$version-arm64.dmg"
+
+                                        cp -f ./dist/$FILE1 ~/workspace/installer/mac/
+                                        cp -f ./dist/$FILE2 ~/workspace/installer/mac/
+                                        cp -f ./dist/$FILE3 ~/workspace/installer/mac/
+                                        cp -f ./dist/$FILE4 ~/workspace/installer/mac/
+
+                                        if [ "${COMMIT_MSG%:*}" == "build" ]; then
+                                            file="/download/flavor/default/${version}/osx_64/${FILE1}" yq e '.files[0].url=env(file)' ./dist/latest-mac.yml | sponge ./dist/latest-mac.yml
+                                            file="/download/flavor/arm/${version}/osx_64/${FILE2}" yq e '.files[1].url=env(file)' ./dist/latest-mac.yml | sponge ./dist/latest-mac.yml
+                                            file="/download/flavor/default/${version}/osx_64/${FILE3}" yq e '.files[2].url=env(file)' ./dist/latest-mac.yml | sponge ./dist/latest-mac.yml
+                                            file="/download/flavor/arm/${version}/osx_64/${FILE4}" yq e '.files[3].url=env(file)' ./dist/latest-mac.yml | sponge ./dist/latest-mac.yml
+                                            yq e '.sha512="mommoss"' ./dist/latest-mac.yml | sponge ./dist/latest-mac.yml
+                                            cp ./dist/latest-mac.yml ~/workspace/installer/mac/latest-mac.yml
+                                            scp -i ~/Dev/ablestor.pem ~/workspace/installer/mac/latest-mac.yml $UPDATE_IP:/home/ubuntu/electron-release-server/.tmp/public/
+                                            scp -i ~/Dev/ablestor.pem ~/workspace/installer/mac/latest-mac.yml $UPDATE_IP:/home/ubuntu/electron-release-server/.tmp/public/arm/
+                                        fi
+
+                                        echo -e "Date : $TODAY\nBranch : $BRANCH\nCommit : $COMMIT_MSG" > ~/workspace/installer/mac/commit.txt
+                                    else
+                                        echo "Not electron mac release"
+                                    fi
+                                '''
+                            }
+                        }
+                    }
+                }
+                stage('windows build') {
+                    agent { node 'windows' }
+                    stages {
+                        stage('[win]git clone') {
+                            steps {
+                                bat '''@echo off
+                                    if not exist ./%MAIN%/ (
+                                        git clone git@github.com:Ablestor/mommoss-electron-kacpta.git
+                                    ) else (
+                                        echo %MAIN% OK
+                                    )
+                                '''
+
+                                bat'''@echo off
+                                    if not exist ./%BUILD%/ (
+                                        git clone git@github.com:Ablestor/mommoss-electron-build.git
+                                    ) else (
+                                        echo %BUILD% OK
+                                    )
+                                '''
+                            }
+                        }
+                        stage('[win]git reset') {
+                            when { expression { return params.GIT_RESET } }
+                            steps {
+                                bat '''@echo off
+                                    cd %MAIN%
+                                    if exist ./node_modules/ ( rd /s /q "./node_modules" )
+                                    if exist yarn.lock ( del yarn.lock )
+                                    if exist package-lock.json ( del package-lock.json )
+                                    
+                                    cd ../%BUILD%
+                                    if exist ./node_modules/ ( rd /s /q "./node_modules" )
+                                    if exist yarn.lock ( del yarn.lock )
+                                    if exist package-lock.json ( del package-lock.json )
+                                '''
+                            }
+                        }
+                        stage('[win]main git pull') {
+                            when { expression { return params.GIT_PULL } }
+                            steps {
+                                bat '''@echo off
+                                    cd %MAIN%
+                                
+                                    git fetch --all
+                                    git reset --hard origin/%BRANCH%
+                                    git pull
+                                    
+                                    if NOT "%COMMIT_ID%" == "none" (
+                                        echo "%COMMIT_MSG%"
+                                        git checkout %COMMIT_ID%
+                                    )
+                                    yarn
+                                '''
+                            }
+                        }
+                        stage('[win]build git pull') {
+                            when { expression { return params.BUILD_GIT_PULL } }
+                            steps {
+                                bat'''@echo off
+                                    cd %BUILD%
+
+                                    git fetch --all
+                                    git reset --hard origin/main
+                                    git pull origin main
+                                    yarn
+                                '''
+                            }
+                        }
+                        stage('[win]version check') {
+                            steps {
+                                bat '''@echo off
+                                    set JQ="C:/ProgramData/chocolatey/lib/jq/tools/jq.exe"
+
+                                    if %TEST% == true (
+                                        cd %MAIN%
+                                        echo Test version is %VERSION_CHANGE%
+                                        %JQ% .version=""""%VERSION_CHANGE%"""" package.json>temp.json
+                                        del package.json
+                                        ren temp.json package.json
+                                        cd ..
+                                    )
+
+                                    for /f %%a in ('%JQ% .version ./%MAIN%/package.json') do set "VERSION=%%a"
+                                    cd %BUILD%
+                                    %JQ% .version=""%VERSION%"" package.json>temp.json
+                                    del package.json
+                                    ren temp.json package.json
+                                '''
+                            }
+                        }
+                        stage('[win]windows build') {
+                            when { expression { return params.WINDOWS_BUILD } }
+                            steps {
+                                bat '''@echo off
+                                    cd %MAIN%
+                                    if exist "./dist/" ( rd /s /q "./dist" )
+                                    if exist "./build/" ( rd /s /q "./build" )
+
+                                    cd ../%BUILD%
+                                    if exist "./dist/" ( rd /s /q "./dist" )
+                                    if exist "./build/" ( rd /s /q "./build" )
+                                '''
+
+                                bat "cd %MAIN% && yarn run postinstall:win"
+                                bat "cd %MAIN% && node rename.js -b"
+                                bat "cd %MAIN% && npm run build:win"
+
+                                bat 'XCOPY "./%MAIN%/build" "./%BUILD%/build/" /S /E /H /Y /Q /I'
+                            }
+                        }
+                        stage('[win]windows signing') {
+                            when { expression { return params.WINDOWS_BUILD } }
+                            steps {
+                                powershell'''
+                                    if ($env:COMMIT_MSG.Contains('build:') -and ($env:TEST -eq "false")) {
+                                        cd $env:BUILD
+                                        yarn run postinstall:win
+                                        yarn run release:win
+
+                                        if (Test-Path -Path "../../installer/win/") {
+                                            rm -r -force "../../installer/win/"
+                                        }
+
+                                        if (Test-Path -Path "./dist/squirrel-windows/") {
+                                            copy "dist/squirrel-windows" "C:/jenkins/workspace/installer/win" -Recurse
+                                        } else {
+                                            echo "Not exist installer"
+                                        }
+
+                                        cd ../../installer/win
+                                        "Date : $env:TODAY\nBranch : $env:BRANCH\nCommit : $env:COMMIT_MSG" -split "\\n" > commit.txt
+                                        echo "Electorn windows release success"
+                                    } else {
+                                        echo "Not electorn windows release"
+                                    }
+                                '''
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        stage('installer upload') {
+            agent { node 'master' }
+            when { expression { return params.UPLOAD } }
+            steps {
+                sh '''#!/bin/bash
+                    MSG="💡[Jenkins]💡\n🐳Mommoss Electron🐳\nMommoss Electron jenkins OK🙆‍♂️"
+
+                    if [ "${COMMIT_MSG%:*}" == "build" ]; then
+                        rm -rf installer
+                        mkdir installer
+
+                        VERSION=`ssh $MAC_IP cat ./workspace/package.json | jq .version `
+                        DSM_DIR="/volume1/Jenkins_Build/mommoss-electron-kacpta/$BRANCH/$VERSION-$TODAY"
+
+                        echo "Installer downloading..."
+                        if [ "$MAC_BUILD" == "true" ]; then
+                            scp -r $MAC_IP:/Users/ablestor/workspace/installer/mac ./installer/
+                            echo "mac arm64, intel download"
+                        fi
+                        if [ "$WINDOWS_BUILD" == "true" ]; then
+                            scp -r $WIN_IP:C:/jenkins/workspace/installer/win ./installer/
+                            echo "windows download"
+                        fi
+                        echo "Installer download success"
+
+                        #echo "Test installer uploading..."
+                        #scp -r -P 2020 ./installer $DSM_IP:$DSM_DIR
+                        #echo "Test installer upload success"
+
+                        echo "Release installer uploading..."
+                        MAC_DIR="/Users/ablestor/workspace/Release/$BRANCH/$VERSION-$TODAY"
+                        echo "release installer upload..."
+                        ssh $MAC_IP mkdir -p $MAC_DIR
+                        ssh $MAC_IP cp -r /Users/ablestor/workspace/installer/ $MAC_DIR/
+                        scp -r ./installer/win/ $MAC_IP:$MAC_DIR/
+                        echo "Release installer upload success"
+
+                        MSG="💡[Jenkins]💡\n🐳Mommoss Electron🐳\nMommoss Electron build success🙆‍♂️"
+                    fi
+
+                    node ../noticeMommoss/noticeMommoss.js 16298 "$MSG"
+                '''
+            }
+        }
+    }
+    post {
+        failure {
+            node('master') {
+                sh'''#!/bin/bash
+                echo "build failed"
+                MSG="💡[Jenkins]💡\n🐳Mommoss Electron🐳\nMommoss Electron jenkins failed❌"
+                node ../noticeMommoss/noticeMommoss.js 16298 "$MSG"
+                '''
+            }
+        }
+        aborted {
+            node('master') {
+                sh'''#!/bin/bash
+                echo "build aborted"
+                MSG="💡[Jenkins]💡\n🐳Mommoss Electron🐳\nMommoss Electron jenkins aborted⛔"
+                node ../noticeMommoss/noticeMommoss.js 16298 "$MSG"
+                '''
+            }
+        }
+    }
+}
