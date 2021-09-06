@@ -1,0 +1,21 @@
+pipeline {
+    agent { node 'dev-server' }
+    stages {
+        stage('git pull') {
+            steps {
+                sh '''#!/bin/bash
+                  echo `pwd`
+                  cd ~/mommoss-api-server-ts
+
+                  git fetch
+                  git reset --hard origin/dev
+                  git pull
+
+                  yarn
+                  
+                  echo "git pull ok"
+                '''
+            }
+        }
+    }
+}
