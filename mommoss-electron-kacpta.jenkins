@@ -1,9 +1,11 @@
 pipeline {
-    agent none
+    agent { node 'master' }
     environment {
         MAIN = "mommoss-electron-kacpta"
         BUILD = "mommoss-electron-build"
-        BRANCH = "${env.COMMIT_ID ? env.HOOK_BRANCH : params.TEST_BRANCH}"
+        ACTION = "${sh(returnStdout: true, script: 'echo ${HOOK_REF%/*}')}" 
+        HOOK_BRANCH = "${sh(returnStdout: true, script: 'echo ${HOOK_REF#*/}')}" 
+        BRANCH = "${params.TEST ? params.TEST_BRANCH : env.HOOK_BRANCH}"
         MAC_IP = "ablestor@192.168.10.118"
         WIN_IP = "ablestor-pc1@192.168.10.153"
         DSM_IP = "kth@192.168.10.102"
@@ -11,7 +13,6 @@ pipeline {
     }
     tools {
         nodejs "node14"
-        git "git"
     }
     stages {
         stage('prepare') {
@@ -19,14 +20,30 @@ pipeline {
             steps {
                 sh '''#!/bin/bash
                     echo Date : $TODAY
-                    echo Branch : $BRANCH
+                    echo Action : $ACTION
+                    if [[ "$ACTION" =~ "tags" ]]; then
+                        echo Tags : $BRANCH
+                        if [ "$ADD_PUSH" == "true" ]; then
+                            COMMIT_MSG="Created $BRANCH tags"
+                        elif [ "$DEL_PUSH" == "true" ]; then
+                            COMMIT_MSG="Deleted $BRANCH tags"
+                        fi
+                    else
+                        echo Branch : $BRANCH
+                        if [ "$ADD_PUSH" == "true" ]; then
+                            COMMIT_MSG="Created $BRANCH branch"
+                        elif [ "$DEL_PUSH" == "true" ]; then
+                            COMMIT_MSG="Deleted $BRANCH branch"
+                        fi
+                    fi
                     echo Commit : $COMMIT_MSG
-                    MSG="💡[Jenkins]💡\n🐳Mommoss Electron🐳\n$COMMIT_AUTHOR\n20${TODAY:0:2}-${TODAY:2:2}-${TODAY:4:2} ${TODAY:7:2}:${TODAY:9:2}:${TODAY:11:2}\n============Commit============\n$COMMIT_MSG\n==============================="
+                    MSG="💡[Jenkins]💡\n🐳Mommoss Electron🐳\n$COMMIT_AUTHOR\n20${TODAY:0:2}-${TODAY:2:2}-${TODAY:4:2} ${TODAY:7:2}:${TODAY:9:2}:${TODAY:11:2}\nBranch: $BRANCH\n============Commit============\n$COMMIT_MSG\n==============================="
                     node ../noticeMommoss/noticeMommoss.js 16298 "$MSG"
                 '''
             }
         }
         stage('Parallel Build') {
+        when { expression { return env.ACTION.trim()=="heads" && env.DEL_PUSH=="false" } }
             parallel {
                 stage("mac build") {
                     agent { node 'mac-mini' }
@@ -151,13 +168,9 @@ pipeline {
 
                                     rm -rf ./dist
                                     rm -rf ./build
-                                    rm -rf ../$BUILD/dist
-                                    rm -rf ../$BUILD/build
 
                                     yarn run postinstall
                                     yarn run build
-
-                                    mv ./build ../$BUILD/build
                                 '''
                             }
                         }
@@ -166,8 +179,12 @@ pipeline {
                             steps {
                                 sh '''#!/bin/bash
 
-                                    if [ "${COMMIT_MSG%:*}" == "build" ] && [ "$TEST" == "false" ]; then
+                                    if [[ "$BRANCH" =~ "master" && "$TEST" == "false" ]]; then
                                         cd $BUILD
+                                        
+                                        rm -rf ./dist
+                                        rm -rf ./build
+                                        cp -R ../$MAIN/build ./build
 
                                         yarn run postinstall
                                         yarn run release
@@ -192,16 +209,14 @@ pipeline {
                                         cp -f ./dist/$FILE3 ~/workspace/installer/mac/
                                         cp -f ./dist/$FILE4 ~/workspace/installer/mac/
 
-                                        if [ "${COMMIT_MSG%:*}" == "build" ]; then
-                                            file="/download/flavor/default/${version}/osx_64/${FILE1}" yq e '.files[0].url=env(file)' ./dist/latest-mac.yml | sponge ./dist/latest-mac.yml
-                                            file="/download/flavor/arm/${version}/osx_64/${FILE2}" yq e '.files[1].url=env(file)' ./dist/latest-mac.yml | sponge ./dist/latest-mac.yml
-                                            file="/download/flavor/default/${version}/osx_64/${FILE3}" yq e '.files[2].url=env(file)' ./dist/latest-mac.yml | sponge ./dist/latest-mac.yml
-                                            file="/download/flavor/arm/${version}/osx_64/${FILE4}" yq e '.files[3].url=env(file)' ./dist/latest-mac.yml | sponge ./dist/latest-mac.yml
-                                            yq e '.sha512="mommoss"' ./dist/latest-mac.yml | sponge ./dist/latest-mac.yml
-                                            cp ./dist/latest-mac.yml ~/workspace/installer/mac/latest-mac.yml
-                                            scp -i ~/Dev/ablestor.pem ~/workspace/installer/mac/latest-mac.yml $UPDATE_IP:/home/ubuntu/electron-release-server/.tmp/public/
-                                            scp -i ~/Dev/ablestor.pem ~/workspace/installer/mac/latest-mac.yml $UPDATE_IP:/home/ubuntu/electron-release-server/.tmp/public/arm/
-                                        fi
+                                        file="/download/flavor/default/${version}/osx_64/${FILE1}" yq e '.files[0].url=env(file)' ./dist/latest-mac.yml | sponge ./dist/latest-mac.yml
+                                        file="/download/flavor/arm/${version}/osx_64/${FILE2}" yq e '.files[1].url=env(file)' ./dist/latest-mac.yml | sponge ./dist/latest-mac.yml
+                                        file="/download/flavor/default/${version}/osx_64/${FILE3}" yq e '.files[2].url=env(file)' ./dist/latest-mac.yml | sponge ./dist/latest-mac.yml
+                                        file="/download/flavor/arm/${version}/osx_64/${FILE4}" yq e '.files[3].url=env(file)' ./dist/latest-mac.yml | sponge ./dist/latest-mac.yml
+                                        yq e '.sha512="mommoss"' ./dist/latest-mac.yml | sponge ./dist/latest-mac.yml
+                                        cp ./dist/latest-mac.yml ~/workspace/installer/mac/latest-mac.yml
+                                        scp -i ~/Dev/ablestor.pem ~/workspace/installer/mac/latest-mac.yml $UPDATE_IP:/home/ubuntu/electron-release-server/.tmp/public/
+                                        scp -i ~/Dev/ablestor.pem ~/workspace/installer/mac/latest-mac.yml $UPDATE_IP:/home/ubuntu/electron-release-server/.tmp/public/arm/
 
                                         echo -e "Date : $TODAY\nBranch : $BRANCH\nCommit : $COMMIT_MSG" > ~/workspace/installer/mac/commit.txt
                                     else
@@ -261,7 +276,6 @@ pipeline {
                                     git pull
                                     
                                     if NOT "%COMMIT_ID%" == "none" (
-                                        echo "%COMMIT_MSG%"
                                         git checkout %COMMIT_ID%
                                     )
                                     yarn
@@ -310,31 +324,30 @@ pipeline {
                                     cd %MAIN%
                                     if exist "./dist/" ( rd /s /q "./dist" )
                                     if exist "./build/" ( rd /s /q "./build" )
-
-                                    cd ../%BUILD%
-                                    if exist "./dist/" ( rd /s /q "./dist" )
-                                    if exist "./build/" ( rd /s /q "./build" )
                                 '''
 
                                 bat "cd %MAIN% && yarn run postinstall:win"
                                 bat "cd %MAIN% && node rename.js -b"
                                 bat "cd %MAIN% && npm run build:win"
-
-                                bat 'XCOPY "./%MAIN%/build" "./%BUILD%/build/" /S /E /H /Y /Q /I'
                             }
                         }
                         stage('[win]windows signing') {
                             when { expression { return params.WINDOWS_BUILD } }
                             steps {
                                 powershell'''
-                                    if ($env:COMMIT_MSG.Contains('build:') -and ($env:TEST -eq "false")) {
+                                    Set-PSDebug -Trace 0
+                                    if (($env:BRANCH -like "master*") -and ($env:TEST -eq "false")) {
                                         cd $env:BUILD
+
+                                        if (Test-Path -Path "./dist/") { rm -r -force "./dist" }
+                                        if (Test-Path -Path "./build/") { rm -r -force "./build" }
+
+                                        copy "../$env:MAIN/build" "./build" -Recurse
+
                                         yarn run postinstall:win
                                         yarn run release:win
 
-                                        if (Test-Path -Path "../../installer/win/") {
-                                            rm -r -force "../../installer/win/"
-                                        }
+                                        if (Test-Path -Path "../../installer/win/") { rm -r -force "../../installer/win/" }
 
                                         if (Test-Path -Path "./dist/squirrel-windows/") {
                                             copy "dist/squirrel-windows" "C:/jenkins/workspace/installer/win" -Recurse
@@ -357,12 +370,11 @@ pipeline {
         }
         stage('installer upload') {
             agent { node 'master' }
-            when { expression { return params.UPLOAD } }
             steps {
                 sh '''#!/bin/bash
                     MSG="💡[Jenkins]💡\n🐳Mommoss Electron🐳\nMommoss Electron jenkins OK🙆‍♂️"
 
-                    if [ "${COMMIT_MSG%:*}" == "build" ]; then
+                    if [[ "$ACTION" =~ "heads" && "$BRANCH" =~ "master" ]]; then
                         rm -rf installer
                         mkdir installer
 
@@ -370,14 +382,13 @@ pipeline {
                         DSM_DIR="/volume1/Jenkins_Build/mommoss-electron-kacpta/$BRANCH/$VERSION-$TODAY"
 
                         echo "Installer downloading..."
-                        if [ "$MAC_BUILD" == "true" ]; then
-                            scp -r $MAC_IP:/Users/ablestor/workspace/installer/mac ./installer/
-                            echo "mac arm64, intel download"
-                        fi
-                        if [ "$WINDOWS_BUILD" == "true" ]; then
-                            scp -r $WIN_IP:C:/jenkins/workspace/installer/win ./installer/
-                            echo "windows download"
-                        fi
+
+                        scp -r $MAC_IP:/Users/ablestor/workspace/installer/mac ./installer/
+                        echo "mac arm64, intel download"
+                        
+                        scp -r $WIN_IP:C:/jenkins/workspace/installer/win ./installer/
+                        echo "windows download"
+
                         echo "Installer download success"
 
                         #echo "Test installer uploading..."
@@ -385,13 +396,17 @@ pipeline {
                         #echo "Test installer upload success"
 
                         echo "Release installer uploading..."
-                        MAC_DIR="/Users/ablestor/workspace/Release/$BRANCH/$VERSION-$TODAY"
+                        MAC_DIR="/Users/ablestor/workspace/Release/$VERSION-$TODAY"
                         echo "release installer upload..."
                         ssh $MAC_IP mkdir -p $MAC_DIR
                         ssh $MAC_IP cp -r /Users/ablestor/workspace/installer/ $MAC_DIR/
                         scp -r ./installer/win/ $MAC_IP:$MAC_DIR/
                         echo "Release installer upload success"
 
+                        node ../noticeMommoss/gitRelease.js $VERSION $GIT_COMMIT
+
+                        MSG="💡[Jenkins]💡\n🐳Mommoss Electron🐳\nMommoss Electron release success🙆‍♂️"
+                    elif [[ "$BRANCH" =~ "release" && "$DEL_PUSH" == "false" && "$test" == "false" ]]; then
                         MSG="💡[Jenkins]💡\n🐳Mommoss Electron🐳\nMommoss Electron build success🙆‍♂️"
                     fi
 
