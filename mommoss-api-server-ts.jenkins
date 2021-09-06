@@ -7,11 +7,15 @@ pipeline {
                   echo `pwd`
                   cd ~/mommoss-api-server-ts
 
+                  pkill -f node
+
                   git fetch
                   git reset --hard origin/dev
                   git pull
 
-                  yarn
+                  npm i
+
+                  forever start -c "npm run dev" ./
                   
                   echo "git pull ok"
                 '''
