@@ -1,25 +1,74 @@
 pipeline {
     agent { node 'dev-server' }
     stages {
-        stage('git pull') {
-            steps {
-                sh '''#!/bin/bash
-                  echo `pwd`
-                  cd ~/mommoss-api-server-ts
+        stage('prepare') {
+			steps {
+				sh '''#!/bin/bash
+				echo Date : $TODAY
+				echo Branch : ${HOOK_REF#*/}
+				echo Commit : $COMMIT_MSG
 
-                  pkill -f node
+				MSG="💡[Jenkins]💡\n🍀Mommoss Dev Server🍀\n$COMMIT_AUTHOR\n20${TODAY:0:2}-${TODAY:2:2}-${TODAY:4:2} ${TODAY:7:2}:${TODAY:9:2}:${TODAY:11:2}\nBranch: ${HOOK_REF#*/}\n============Commit============\n$COMMIT_MSG\n==============================="
+				cd ~/dev-server
+				node noticeMommoss "24" "$MSG"
+				'''
+			}
+        }
+        stage('deploy') {
+			steps {
+				sh '''#!/bin/bash
+                logPath=`pwd`
+                cd ~/mommoss-api-server-ts
 
-                  git fetch
-                  git reset --hard origin/dev
-                  git pull
+                pkill -f node
 
-                  npm i
+                git fetch --all
+				git reset --hard origin/${HOOK_REF#*/}
+				git pull
+				
+				if [ "$COMMIT_ID" != "none" ]; then
+					git checkout $COMMIT_ID
+				fi
 
-                  forever start -c "npm run dev" ./
-                  
-                  echo "git pull ok"
-                '''
-            }
+                npm i
+
+				if [ ! -d $logPath/log ]; then
+					mkdir $logPath/log
+				fi
+
+				JENKINS_NODE_COOKIE=dontKillMe
+                forever start -a -l $logPath/log/${TODAY:0:6}.log -c "npm run dev" ./
+                
+                echo "git pull ok"
+				'''
+			}
+        }
+		stage('send message') {
+			steps {
+				sh'''#!/bin/bash
+				MSG="💡[Jenkins]💡\n🍀Mommoss Dev Server🍀\nMommoss Dev Server deploy success🙆‍♂️"
+				cd ~/dev-server
+                node noticeMommoss.js "24" "$MSG"
+				'''
+			}
+		}
+    }
+    post {
+        failure {
+			sh'''#!/bin/bash
+			echo "build failed"
+			MSG="💡[Jenkins]💡\n🍀Mommoss Dev Server🍀\nMommoss Dev Server jenkins failed❌"
+			cd ~/dev-server
+			node noticeMommoss.js "24" "$MSG"
+			'''
+        }
+        aborted {
+			sh'''#!/bin/bash
+			echo "build aborted"
+			MSG="💡[Jenkins]💡\n🍀Mommoss Dev Server🍀\nMommoss Dev Server jenkins jenkins aborted⛔"
+			cd ~/dev-server
+			node noticeMommoss.js "24" "$MSG"
+			'''
         }
     }
 }
