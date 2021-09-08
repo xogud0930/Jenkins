@@ -37,7 +37,8 @@ pipeline {
                     
                     echo Commit : $COMMIT_MSG
                     MSG="💡[Jenkins]💡\n🐳Mommoss Electron🐳\n$COMMIT_AUTHOR\n20${TODAY:0:2}-${TODAY:2:2}-${TODAY:4:2} ${TODAY:7:2}:${TODAY:9:2}:${TODAY:11:2}\n$TYPE: $BRANCH\n============Commit============\n$COMMIT_MSG\n==============================="
-                    node ../noticeMommoss/noticeMommoss.js 16298 "$MSG"
+                    cd ../noticeMommoss
+                    node noticeMommoss.js 16298 "$MSG"
                 '''
             }
         }
@@ -402,14 +403,16 @@ pipeline {
                         scp -r ./installer/win/ $MAC_IP:$MAC_DIR/
                         echo "Release installer upload success"
 
-                        node ../noticeMommoss/gitRelease.js $VERSION $GIT_COMMIT
+                        node ../noticeMommoss/gitRelease.js $VERSION "$COMMIT_MSG"
+                        node ../noticeMommoss/addNewVersion.js $VERSION "$COMMIT_MSG"
 
                         MSG="💡[Jenkins]💡\n🐳Mommoss Electron🐳\nMommoss Electron release success🙆‍♂️"
                     elif [[ "$BRANCH" =~ "release" && "$DEL_PUSH" == "false" && "$test" == "false" ]]; then
                         MSG="💡[Jenkins]💡\n🐳Mommoss Electron🐳\nMommoss Electron build success🙆‍♂️"
                     fi
 
-                    node ../noticeMommoss/noticeMommoss.js 16298 "$MSG"
+                    cd ../noticeMommoss
+                    node noticeMommoss.js 16298 "$MSG"
                 '''
             }
         }
@@ -420,7 +423,8 @@ pipeline {
                 sh'''#!/bin/bash
                 echo "build failed"
                 MSG="💡[Jenkins]💡\n🐳Mommoss Electron🐳\nMommoss Electron jenkins failed❌"
-                node ../noticeMommoss/noticeMommoss.js 16298 "$MSG"
+                cd ../noticeMommoss
+                node noticeMommoss.js 16298 "$MSG"
                 '''
             }
         }
@@ -429,7 +433,8 @@ pipeline {
                 sh'''#!/bin/bash
                 echo "build aborted"
                 MSG="💡[Jenkins]💡\n🐳Mommoss Electron🐳\nMommoss Electron jenkins aborted⛔"
-                node ../noticeMommoss/noticeMommoss.js 16298 "$MSG"
+                cd ../noticeMommoss
+                node noticeMommoss.js 16298 "$MSG"
                 '''
             }
         }
