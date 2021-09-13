@@ -101,7 +101,7 @@ pipeline {
                                     
                                     git fetch --all
                                     git reset --hard origin/$BRANCH
-                                    git pull
+                                    git pull $BRANCH
                                     
                                     if [ "$COMMIT_ID" != "none" ]; then
                                         echo $COMMIT_MSG
@@ -208,15 +208,14 @@ pipeline {
                                         cp -f ./dist/$FILE2 ~/workspace/installer/mac/
                                         cp -f ./dist/$FILE3 ~/workspace/installer/mac/
                                         cp -f ./dist/$FILE4 ~/workspace/installer/mac/
+                                        
+                                        cp ./dist/latest-mac.yml ~/workspace/editYaml/latest-mac-old.yml
+                                        cd ~/workspace/editYaml
+                                        node editYaml.js "$COMMIT_MSG"
+                                        cp ./latest-mac.yml ../installer/mac/latest-mac.yml
 
-                                        file="/download/flavor/default/${version}/osx_64/${FILE1}" yq e '.files[0].url=env(file)' ./dist/latest-mac.yml | sponge ./dist/latest-mac.yml
-                                        file="/download/flavor/arm/${version}/osx_64/${FILE2}" yq e '.files[1].url=env(file)' ./dist/latest-mac.yml | sponge ./dist/latest-mac.yml
-                                        file="/download/flavor/default/${version}/osx_64/${FILE3}" yq e '.files[2].url=env(file)' ./dist/latest-mac.yml | sponge ./dist/latest-mac.yml
-                                        file="/download/flavor/arm/${version}/osx_64/${FILE4}" yq e '.files[3].url=env(file)' ./dist/latest-mac.yml | sponge ./dist/latest-mac.yml
-                                        yq e '.sha512="mommoss"' ./dist/latest-mac.yml | sponge ./dist/latest-mac.yml
-                                        cp ./dist/latest-mac.yml ~/workspace/installer/mac/latest-mac.yml
-                                        scp -i ~/Dev/ablestor.pem ~/workspace/installer/mac/latest-mac.yml $UPDATE_IP:/home/ubuntu/electron-release-server/.tmp/public/
-                                        scp -i ~/Dev/ablestor.pem ~/workspace/installer/mac/latest-mac.yml $UPDATE_IP:/home/ubuntu/electron-release-server/.tmp/public/arm/
+                                        scp -i ~/Dev/ablestor.pem ./latest-mac.yml $UPDATE_IP:/home/ubuntu/electron-release-server/.tmp/public/
+                                        scp -i ~/Dev/ablestor.pem ./latest-mac.yml $UPDATE_IP:/home/ubuntu/electron-release-server/.tmp/public/arm/
 
                                         echo -e "Date : $TODAY\nBranch : $BRANCH\nCommit : $COMMIT_MSG" > ~/workspace/installer/mac/commit.txt
                                     else
@@ -273,7 +272,7 @@ pipeline {
                                 
                                     git fetch --all
                                     git reset --hard origin/%BRANCH%
-                                    git pull
+                                    git pull  %BRANCH%
                                     
                                     if NOT "%COMMIT_ID%" == "none" (
                                         git checkout %COMMIT_ID%
