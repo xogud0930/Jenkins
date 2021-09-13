@@ -16,7 +16,7 @@ pipeline {
                     echo Branch : $BRANCH
                     echo Commit : $COMMIT_MSG
                     MSG="💡[Jenkins]💡\n🐙Mommoss App🐙\n$COMMIT_AUTHOR\n20${TODAY:0:2}-${TODAY:2:2}-${TODAY:4:2} ${TODAY:7:2}:${TODAY:9:2}:${TODAY:11:2}\n============Commit============\n$COMMIT_MSG\n==============================="
-                    node ../noticeMommoss
+                    cd ../noticeMommoss
                     node noticeMommoss.js 20 "$MSG"
                 '''
             }
@@ -39,11 +39,12 @@ pipeline {
 
                     git fetch --all
                     git reset --hard origin/$BRANCH
-                    git pull origin $BRANCH
+                    git pull $BRANCH
                     
                     if [ "$COMMIT_ID" != "none" ]; then
                         echo $COMMIT_MSG
                         git checkout $COMMIT_ID
+                    fi
                     
                     npm install --save --legacy-peer-deps
                     expo login -u dev@ablestor.com -p $EXPO_PSW
@@ -105,7 +106,7 @@ pipeline {
                         fi
                     fi
 
-                    node ../../noticeMommoss
+                    cd ../../noticeMommoss
                     node noticeMommoss.js 20 "$MSG"
                 '''
             }
@@ -116,7 +117,7 @@ pipeline {
             sh'''#!/bin/bash
             echo "Build failed"
             MSG="💡[Jenkins]💡\n🐙Mommoss App🐙\nMommoss App jenkins failed❌"
-            node ../noticeMommoss
+            cd ../noticeMommoss
             node noticeMommoss.js 20 "$MSG"
             '''
         }
@@ -124,7 +125,7 @@ pipeline {
             sh'''#!/bin/bash
             echo "build aborted"
             MSG="💡[Jenkins]💡\n🐙Mommoss App🐙\nMommoss App jenkins aborted⛔"
-            node ../noticeMommoss
+            cd ../noticeMommoss
             node noticeMommoss.js 20 "$MSG"
             '''
         }
