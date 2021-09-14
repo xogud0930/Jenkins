@@ -214,7 +214,7 @@ pipeline {
                                         node editYaml.js "$COMMIT_MSG"
                                         cp ./latest-mac.yml ../installer/mac/latest-mac.yml
 
-                                        scp -i ~/Dev/ablestor.pem ./latest-mac.yml $UPDATE_IP:/home/ubuntu/electron-release-server/.tmp/public/
+                                        #scp -i ~/Dev/ablestor.pem ./latest-mac.yml $UPDATE_IP:/home/ubuntu/electron-release-server/.tmp/public/
                                         scp -i ~/Dev/ablestor.pem ./latest-mac.yml $UPDATE_IP:/home/ubuntu/electron-release-server/.tmp/public/arm/
 
                                         echo -e "Date : $TODAY\nBranch : $BRANCH\nCommit : $COMMIT_MSG" > ~/workspace/installer/mac/commit.txt
