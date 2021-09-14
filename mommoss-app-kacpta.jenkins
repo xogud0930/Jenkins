@@ -2,7 +2,9 @@ pipeline {
     agent { node 'master' }
     environment {
         MAIN = "mommoss-app-kacpta"
-        BRANCH = "${env.COMMIT_ID ? env.HOOK_BRANCH : params.TEST_BRANCH}"
+        ACTION = "${sh(returnStdout: true, script: 'echo ${HOOK_REF%/*}')}" 
+        HOOK_BRANCH = "${sh(returnStdout: true, script: 'echo ${HOOK_REF#*/}')}" 
+        BRANCH = "${env.COMMIT_MSG ? env.HOOK_BRANCH : params.TEST_BRANCH}"
     }
     tools {
         nodejs "node16"
@@ -13,7 +15,21 @@ pipeline {
             steps {
                 sh '''#!/bin/bash
                     echo Date : $TODAY
-                    echo Branch : $BRANCH
+                    echo Action : $ACTION
+                    if [[ "$ACTION" =~ "tags" ]]; then
+                        TYPE="tags"
+                        echo Tags : $BRANCH
+                    else
+                        TYPE="branch"
+                        echo Branch : $BRANCH
+                    fi
+
+                    if [ "$ADD_PUSH" == "true" ]; then
+                        COMMIT_MSG="Created $BRANCH $TYPE"
+                    elif [ "$DEL_PUSH" == "true" ]; then
+                        COMMIT_MSG="Deleted $BRANCH $TYPE"
+                    fi
+                    
                     echo Commit : $COMMIT_MSG
                     MSG="💡[Jenkins]💡\n🐙Mommoss App🐙\n$COMMIT_AUTHOR\n20${TODAY:0:2}-${TODAY:2:2}-${TODAY:4:2} ${TODAY:7:2}:${TODAY:9:2}:${TODAY:11:2}\n============Commit============\n$COMMIT_MSG\n==============================="
                     cd ../noticeMommoss
@@ -46,64 +62,28 @@ pipeline {
                         git checkout $COMMIT_ID
                     fi
                     
-                    npm install --save --legacy-peer-deps
+                    npm install
                     expo login -u dev@ablestor.com -p $EXPO_PSW
                 '''
             }
         }
         stage('build') {
+            when { expression { return env.ACTION.trim()=="heads" && env.DEL_PUSH=="false" } }
             steps {
                 sh'''#!/bin/bash
                     cd $MAIN
 
-                    OLD_IFS=$OLD_IFS
-                    IFS=*
-                    COMMIT_SPLIT=($COMMIT_MSG)
-                    IFS=$OLD_IFS
-                    COMMIT=${COMMIT_SPLIT[0]}
-                    COMMAND=${COMMIT_SPLIT[1]}
-                    CHANNEL=${COMMIT_SPLIT[2]}
-                    OPTION=${COMMIT_SPLIT[3]}
-
-                    echo "COMMIT : $COMMIT"
+                    echo "COMMIT : $COMMIT_MSG"
                     MSG="💡[Jenkins]💡\n🐙Mommoss App🐙\nMommoss App jenkins OK🙆‍♂️"
 
-                    if [ "$CHANNEL" != "main" ] && [ "$CHANNEL" != "test" ]; then
-                        if [ "$CHANNEL" == "ba" ] || [ "$CHANNEL" == "bi" ]; then
-                            OPTION=$CHANNEL
-                        fi
-                        CHANNEL="test"
-                        echo "channel is $CHANNEL"
-                        echo "option is $OPTION"
-                    fi
-
-                    echo "check -$COMMAND -$CHANNEL -$OPTION"
-
-                    if [ "$CHANNEL" == "main" ]; then
-                        CHANNEL="default"
-                    fi
-
-                    if [ "$COMMAND" == "publish" ]; then
-                        echo "expo $CHANNEL publish"
-                        expo publish --release-channel $CHANNEL
-                        MSG="💡[Jenkins]💡\n🐙Mommoss App🐙\n$CHANNEL channel publish success🙆‍♂️"
-                    fi
-
-                    if [ "$COMMAND" == "release" ]; then
-                        if [ "$OPTION" == "ba" ]; then
-                            echo "expo release android"
-                            expo ba --release-channel $CHANNEL
-                            MSG="💡[Jenkins]💡\n🐙Mommoss App🐙\nAndroid $CHANNEL channel Release success🙆‍♂️"
-                        elif [ "$OPTION" == "bi" ]; then
-                            echo "expo release ios"
-                            expo bi --release-channel $CHANNEL
-                            MSG="💡[Jenkins]💡\n🐙Mommoss App🐙\nIOS $CHANNEL channel Release success🙆‍♂️"
-                        else
-                            echo "expo release android&ios"
-                            expo ba --release-channel $CHANNEL
-                            expo bi --release-channel $CHANNEL
-                            MSG="💡[Jenkins]💡\n🐙Mommoss App🐙\nAndroid&IOS $CHANNEL channel Release success🙆‍♂️"
-                        fi
+                    if [[ "$BRANCH" =~ "master" ]]; then
+                        echo "expo master branch publish"
+                        expo publish --release-channel default
+                        MSG="💡[Jenkins]💡\n🐙Mommoss App🐙\nMain channel publish success🙆‍♂️"
+                    elif [[ "$BRANCH" =~ "develop" ]]; then
+                        echo "expo develop branch publish"
+                        expo publish --release-channel test
+                        MSG="💡[Jenkins]💡\n🐙Mommoss App🐙\nTest channel publish success🙆‍♂️"
                     fi
 
                     cd ../../noticeMommoss
