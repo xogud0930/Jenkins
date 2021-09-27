@@ -1,0 +1,21 @@
+{
+  "name": "test",
+  "version": "1.0.0",
+  "description": "",
+  "main": "test.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^10.0.0",
+    "fs": "0.0.1-security",
+    "json2yaml": "^1.1.0",
+    "puppeteer": "^10.2.0",
+    "request": "^2.88.2",
+    "ws": "^8.2.0",
+    "yaml": "^1.10.2",
+    "yaml2json": "^1.0.2"
+  }
+}
