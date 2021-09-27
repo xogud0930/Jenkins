@@ -62,7 +62,7 @@ pipeline {
                         git checkout $COMMIT_ID
                     fi
                     
-                    npm install
+                    yarn
                     expo login -u dev@ablestor.com -p $EXPO_PSW
                 '''
             }
