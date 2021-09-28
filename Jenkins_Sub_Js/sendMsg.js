@@ -18,7 +18,7 @@ const writeDotenv = () => {
     req.post({
         headers: {'content-type': 'application/json'},
         uri: process.env.API_URI+'/api/user/login',
-        body: {'email':process.env.ID,'password':process.env.TOKEN.PW},
+        body: {'email':process.env.ID,'password':process.env.PW},
         json: true
       }, function(err, res, body) {
         var data = new Buffer("TOKEN="+body.result.token);

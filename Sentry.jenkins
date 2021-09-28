@@ -1,0 +1,22 @@
+pipeline {
+    agent { node 'master' }
+    stages {
+        stage('send message') {
+            steps {
+                sh'''#!/bin/bash
+
+                if [ "$PROJECT" == "mommoss-desktop" ]; then
+                    USER="16298"
+                elif [ "$PROJECT" == "mommoss-app-kacpta" ]; then
+                    USER="20"
+                fi
+
+                MSG="❄️[Sentry]❄️\nProject: $PROJECT\n- filename: $FILENAME\n- function: $FUNCTION\n- value: $VALUE\n\nhttps://sentry.io/organizations/ablestor/issues/$ISSUE_ID"
+
+                cd ../noticeMommoss
+                node noticeMommoss.js "$USER" "$MSG" 2557
+                '''
+            }
+        }
+    }
+}
