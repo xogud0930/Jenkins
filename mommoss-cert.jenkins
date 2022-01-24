@@ -1,0 +1,103 @@
+pipeline {
+    agent { node 'dev-server' }
+    stages {
+        stage('prepare') {
+            steps {
+                sh '''#!/bin/bash
+                
+                echo Date : $TODAY
+
+                MSG="💡[Jenkins]💡\n🔑Mommoss AutoCert🔑\nCertbot expiration check."
+                cd ~/dev-server
+                node noticeMommoss "24" "$MSG" "2793"
+                '''
+            }
+        }
+        stage('Certbot') {
+            steps {
+                sh '''#!/bin/bash
+                  CHAIN_PEM="/root/dev-server/letsencrypt/live/mommoss.com/fullchain.pem"
+                  KEY_PEM="/root/dev-server/letsencrypt/live/mommoss.com/privkey.pem"
+                  SSH_KEY="/root/dev-server/ablestor.pem"
+
+                  MAIL_SERVER="root@ablestor.com"
+                  MAIL_SERVER_SECRET="${MAIL_SERVER}:/home/mommossmall"
+                  UPDATE_SERVER="ubuntu@ec2-15-164-224-151.ap-northeast-2.compute.amazonaws.com"
+                  UPDATE_SERVER_SECRET="${UPDATE_SERVER}:/home/ubuntu/electron-release-server/secrets"
+                  MOSS_SERVER="ubuntu@ec2-52-79-180-198.ap-northeast-2.compute.amazonaws.com"
+                  MOSS_SERVER_SECRET="${MOSS_SERVER}:/home/ubuntu/node/secret"
+                  API_SERVER="ubuntu@ec2-54-180-32-67.ap-northeast-2.compute.amazonaws.com"
+                  API_SERVER_SECRET="${API_SERVER}:/home/ubuntu/node/secret"
+
+                  RESULT=`certbot renew --dns-route53`
+                  echo "$RESULT"
+
+                  if [[ "$RESULT" == *"(success)"* ]]; then
+                    echo "Copy key to mail.mommoss.com"
+                    scp $CHAIN_PEM "${MAIL_SERVER_SECRET}/fullchain.pem"
+                    scp $KEY_PEM "${MAIL_SERVER_SECRET}/privkey.pem"
+                    ssh $MAIL_SERVER service httpd restart
+
+                    echo "Copy key to update.mommoss.com"
+                    scp -i $SSH_KEY $CHAIN_PEM "${UPDATE_SERVER_SECRET}/fullchain.pem"
+                    scp -i $SSH_KEY $KEY_PEM "${UPDATE_SERVER_SECRET}/privkey.pem"
+                    ssh -i $SSH_KEY $UPDATE_SERVER "sudo systemctl restart nginx"
+
+                    echo "Copy key to mommoss.com"
+                    scp -i $SSH_KEY $CHAIN_PEM "${MOSS_SERVER_SECRET}/fullchain.pem"
+                    scp -i $SSH_KEY $KEY_PEM "${MOSS_SERVER_SECRET}/privkey.pem"
+                    ssh -i $SSH_KEY $MOSS_SERVER "sudo service nginx restart"
+
+                    echo "Copy key to legacy-api.mommoss.com"
+                    scp -i $SSH_KEY $CHAIN_PEM "${API_SERVER_SECRET}/fullchain.pem"
+                    scp -i $SSH_KEY $KEY_PEM "${API_SERVER_SECRET}/privkey.pem"
+                    ssh -i $SSH_KEY $API_SERVER "sudo service nginx restart"
+
+                    ################################################################################################
+                    echo "Copy key to stg.mommoss.com/mommoss-api-server-ts"
+                    yes | cp -f $CHAIN_PEM ~/mommoss-api-server-ts/secrets/fullchain.pem
+                    yes | cp -f $KEY_PEM ~/mommoss-api-server-ts/secrets/privkey.pem
+
+                    echo "Copy key to stg.mommoss.com/mommoss-mail-server"
+                    yes | cp -f $CHAIN_PEM ~/mommoss-mail-server/secrets/fullchain.pem
+                    yes | cp -f $KEY_PEM ~/mommoss-mail-server/secrets/privkey.pem
+
+                    echo "Copy key to stg.mommoss.com/sunflower-prototype"
+                    yes | cp -f $CHAIN_PEM ~/sunflower-prototype/secrets/fullchain.pem
+                    yes | cp -f $KEY_PEM ~/sunflower-prototype/secrets/privkey.pem
+
+                    echo "Restarting stg.mommoss.com"
+                    pm2 restart all
+
+                    MSG="💡[Jenkins]💡\n🔑Mommoss AutoCert🔑\nCertfication renew success🙆‍♂️"
+                  elif [[ "$RESULT" == *"(skipped)"* ]]; then
+                    MSG="💡[Jenkins]💡\n🔑Mommoss AutoCert🔑\nSkip because the certificate has not expired🙆‍♂️"
+                  elif [[ "$RESULT" == *"(failure)"* ]]; then
+                    MSG="💡[Jenkins]💡\n🔑Mommoss AutoCert🔑\nCertbot renew failed❌"
+                  fi
+
+                  cd ~/dev-server
+                  node noticeMommoss.js "24" "$MSG" "2793"
+                '''
+            }
+        }
+    }
+    post {
+        failure {
+            sh'''#!/bin/bash
+            echo "build failed"
+            MSG="💡[Jenkins]💡\n🔑Mommoss AutoCert🔑\nMommoss certbot jenkins failed❌"
+            cd ~/dev-server
+            node noticeMommoss.js "24" "$MSG" "2793"
+            '''
+        }
+        aborted {
+            sh'''#!/bin/bash
+            echo "build aborted"
+            MSG="💡[Jenkins]💡\n🔑Mommoss AutoCert🔑\nMommoss certbot jenkins aborted⛔"
+            cd ~/dev-server
+            node noticeMommoss.js "24" "$MSG" "2793"
+            '''
+        }
+    }
+}
