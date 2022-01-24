@@ -37,8 +37,11 @@ pipeline {
                     
                     echo Commit : $COMMIT_MSG
                     MSG="💡[Jenkins]💡\n🐳Mommoss Electron🐳\n$COMMIT_AUTHOR\n20${TODAY:0:2}-${TODAY:2:2}-${TODAY:4:2} ${TODAY:7:2}:${TODAY:9:2}:${TODAY:11:2}\n$TYPE: $BRANCH\n============Commit============\n$COMMIT_MSG\n==============================="
-                    cd ../noticeMommoss
-                    node noticeMommoss.js 16298 "$MSG"
+
+                    if [[ "$BRANCH" =~ "master" || "$BRANCH" =~ "develop" || "$BRANCH" =~ "release" ]]; then
+                        cd ../noticeMommoss
+                        node noticeMommoss.js 16298 "$MSG"
+                    fi
                 '''
             }
         }
@@ -130,7 +133,6 @@ pipeline {
                         stage('[mac]version check') {
                             steps {
                                 sh '''#!/bin/bash
-                                    cp -f /Users/ablestor/workspace/nortarization.js ./$BUILD/
                                     cp -f ./$MAIN/package.json ../
 
                                     if [ $TEST == true ]; then
@@ -181,6 +183,7 @@ pipeline {
 
                                     if [[ "$BRANCH" =~ "master" && "$TEST" == "false" ]]; then
                                         cd $BUILD
+                                        CHANGELOG=`cat ../$MAIN/CHANGELOG.md`
                                         
                                         rm -rf ./dist
                                         rm -rf ./build
@@ -208,16 +211,18 @@ pipeline {
                                         cp -f ./dist/$FILE2 ~/workspace/installer/mac/
                                         cp -f ./dist/$FILE3 ~/workspace/installer/mac/
                                         cp -f ./dist/$FILE4 ~/workspace/installer/mac/
+                                        cp -f ../$MAIN/CHANGELOG.md ~/workspace/installer/mac/
                                         
                                         cp ./dist/latest-mac.yml ~/workspace/editYaml/latest-mac-old.yml
                                         cd ~/workspace/editYaml
-                                        node editYaml.js "$COMMIT_MSG"
+
+                                        node editYaml.js "$CHANGELOG"
                                         cp ./latest-mac.yml ../installer/mac/latest-mac.yml
 
                                         #scp -i ~/Dev/ablestor.pem ./latest-mac.yml $UPDATE_IP:/home/ubuntu/electron-release-server/.tmp/public/
                                         scp -i ~/Dev/ablestor.pem ./latest-mac.yml $UPDATE_IP:/home/ubuntu/electron-release-server/.tmp/public/arm/
 
-                                        echo -e "Date : $TODAY\nBranch : $BRANCH\nCommit : $COMMIT_MSG" > ~/workspace/installer/mac/commit.txt
+                                        echo -e "Date : $TODAY\nBranch : $BRANCH\nCommit : $CHANGELOG" > ~/workspace/installer/mac/commit.txt
                                     else
                                         echo "Not electron mac release"
                                     fi
@@ -310,9 +315,10 @@ pipeline {
 
                                     for /f %%a in ('%JQ% .version ./%MAIN%/package.json') do set "VERSION=%%a"
                                     cd %BUILD%
+                                    
+                                    set NAME="맘모스"
                                     %JQ% .version=""%VERSION%"" package.json>temp.json
-                                    del package.json
-                                    ren temp.json package.json
+                                    %JQ% .build.productName=""%NAME%"" temp.json>package.json
                                 '''
                             }
                         }
@@ -355,7 +361,6 @@ pipeline {
                                         }
 
                                         cd ../../installer/win
-                                        "Date : $env:TODAY\nBranch : $env:BRANCH\nCommit : $env:COMMIT_MSG" -split "\\n" > commit.txt
                                         echo "Electorn windows release success"
                                     } else {
                                         echo "Not electorn windows release"
@@ -379,6 +384,7 @@ pipeline {
 
                         VERSION=`ssh $MAC_IP cat ./workspace/package.json | jq .version `
                         DSM_DIR="/volume1/Jenkins_Build/mommoss-electron-kacpta/$BRANCH/$VERSION-$TODAY"
+                        CHANGELOG=`ssh ablestor@192.168.10.118 "cat /Users/ablestor/workspace/installer/mac/CHANGELOG.md"`
 
                         echo "Installer downloading..."
 
@@ -402,16 +408,20 @@ pipeline {
                         scp -r ./installer/win/ $MAC_IP:$MAC_DIR/
                         echo "Release installer upload success"
 
-                        node ../noticeMommoss/gitRelease.js $VERSION "$COMMIT_MSG"
-                        node ../noticeMommoss/addNewVersion.js $VERSION "$COMMIT_MSG"
+                        cd ../noticeMommoss
+                        node ./gitRelease.js $VERSION "$CHANGELOG"
+                        node ./addNewVersion.js $VERSION "$CHANGELOG"
+                        cd ..
 
                         MSG="💡[Jenkins]💡\n🐳Mommoss Electron🐳\nMommoss Electron release success🙆‍♂️"
                     elif [[ "$BRANCH" =~ "release" && "$DEL_PUSH" == "false" && "$test" == "false" ]]; then
                         MSG="💡[Jenkins]💡\n🐳Mommoss Electron🐳\nMommoss Electron build success🙆‍♂️"
                     fi
 
-                    cd ../noticeMommoss
-                    node noticeMommoss.js 16298 "$MSG"
+                    if [[ "$BRANCH" =~ "master" || "$BRANCH" =~ "develop" || "$BRANCH" =~ "release" ]]; then
+                        cd ../noticeMommoss
+                        node noticeMommoss.js 16298 "$MSG"
+                    fi
                 '''
             }
         }

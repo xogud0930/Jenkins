@@ -1,0 +1,69 @@
+pipeline {
+    agent { node 'dev-server' }
+    stages {
+        stage('prepare') {
+            steps {
+                sh '''#!/bin/bash
+                
+                echo Date : $TODAY
+                echo Branch : ${HOOK_REF#*/}
+                echo Commit : $COMMIT_MSG
+
+                MSG="💡[Jenkins]💡\n📧Mommoss Mail Server📧\n$COMMIT_AUTHOR\n20${TODAY:0:2}-${TODAY:2:2}-${TODAY:4:2} ${TODAY:7:2}:${TODAY:9:2}:${TODAY:11:2}\nBranch: ${HOOK_REF#*/}\n============Commit============\n$COMMIT_MSG\n==============================="
+                cd ~/dev-server
+                node noticeMommoss "24" "$MSG"
+                '''
+            }
+        }
+        stage('deploy') {
+            steps {
+                sh '''#!/bin/bash
+                cd ~/mommoss-mail-server
+
+                git fetch --all
+                git reset --hard origin/${HOOK_REF#*/}
+                git pull
+                
+                if [ "$COMMIT_ID" != "none" ]; then
+                    git checkout $COMMIT_ID
+                fi
+
+                yarn
+
+                JENKINS_NODE_COOKIE=dontKillMe
+                
+                pm2 restart mail-server
+                
+                echo "git pull ok"
+                '''
+            }
+        }
+        stage('send message') {
+            steps {
+                sh'''#!/bin/bash
+                MSG="💡[Jenkins]💡\n📧Mommoss Mail Server📧\nMommoss mail server deploy success🙆‍♂️\nServer is restarting."
+                cd ~/dev-server
+                node noticeMommoss.js "24" "$MSG"
+                '''
+            }
+        }
+    }
+    post {
+        failure {
+            sh'''#!/bin/bash
+            echo "build failed"
+            MSG="💡[Jenkins]💡\n📧Mommoss Mail Server📧\nMommoss mail server jenkins failed❌"
+            cd ~/dev-server
+            node noticeMommoss.js "24" "$MSG"
+            '''
+        }
+        aborted {
+            sh'''#!/bin/bash
+            echo "build aborted"
+            MSG="💡[Jenkins]💡\n📧Mommoss Mail Server📧\nMommoss mail server jenkins aborted⛔"
+            cd ~/dev-server
+            node noticeMommoss.js "24" "$MSG"
+            '''
+        }
+    }
+}

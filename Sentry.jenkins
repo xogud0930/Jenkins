@@ -2,6 +2,7 @@ pipeline {
     agent { node 'master' }
     stages {
         stage('send message') {
+            when { expression { return env.ACTION=="created"} }
             steps {
                 sh'''#!/bin/bash
 
@@ -20,3 +21,4 @@ pipeline {
         }
     }
 }
+

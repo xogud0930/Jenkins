@@ -9,17 +9,20 @@ pipeline {
                 echo Branch : ${HOOK_REF#*/}
                 echo Commit : $COMMIT_MSG
 
-                MSG="💡[Jenkins]💡\n🍀Mommoss Dev Server🍀\n$COMMIT_AUTHOR\n20${TODAY:0:2}-${TODAY:2:2}-${TODAY:4:2} ${TODAY:7:2}:${TODAY:9:2}:${TODAY:11:2}\nBranch: ${HOOK_REF#*/}\n============Commit============\n$COMMIT_MSG\n==============================="
-                cd ~/dev-server
-                node noticeMommoss "24" "$MSG"
+                MSG="💡[Jenkins]💡\n🌟Sunflower Admin🌟\n$COMMIT_AUTHOR\n20${TODAY:0:2}-${TODAY:2:2}-${TODAY:4:2} ${TODAY:7:2}:${TODAY:9:2}:${TODAY:11:2}\nBranch: ${HOOK_REF#*/}\n============Commit============\n$COMMIT_MSG\n==============================="
+
+                if [[ "$BRANCH" =~ "main" ]]; then
+                    cd ~/dev-server
+                    node noticeMommoss "24" "$MSG"
+                fi
                 '''
             }
         }
         stage('deploy') {
             steps {
                 sh '''#!/bin/bash
-                if [[ "$BRANCH" =~ "dev" ]]; then
-                    cd ~/mommoss-api-server-ts
+                if [[ "$BRANCH" =~ "main" ]]; then
+                    cd ~/sunflower-admin-ts
 
                     git fetch --all
                     git reset --hard origin/${HOOK_REF#*/}
@@ -29,15 +32,12 @@ pipeline {
                         git checkout $COMMIT_ID
                     fi
 
-                    npm i
-
-                    JENKINS_NODE_COOKIE=dontKillMe
-                    
-                    pm2 restart dev-server
-                    
+                    yarn
                     echo "git pull ok"
-                else
-                    echo "not master branch"
+
+                    yarn run build
+                    cp -f -r ./build/* ./../sunflower-prototype/public/
+                    echo "bulid ok"
                 fi
                 '''
             }
@@ -45,9 +45,12 @@ pipeline {
         stage('send message') {
             steps {
                 sh'''#!/bin/bash
-                MSG="💡[Jenkins]💡\n🍀Mommoss Dev Server🍀\nMommoss dev Server deploy success🙆‍♂️\nServer is restarting."
-                cd ~/dev-server
-                node noticeMommoss.js "24" "$MSG"
+                MSG="💡[Jenkins]💡\n🌟Sunflower Admin🌟\nSunflower admin build success🙆‍♂️"
+
+                if [[ "$BRANCH" =~ "main" ]]; then
+                    cd ~/dev-server
+                    node noticeMommoss.js "24" "$MSG"
+                fi
                 '''
             }
         }
@@ -56,7 +59,7 @@ pipeline {
         failure {
             sh'''#!/bin/bash
             echo "build failed"
-            MSG="💡[Jenkins]💡\n🍀Mommoss Dev Server🍀\nMommoss dev server jenkins failed❌"
+            MSG="💡[Jenkins]💡\n🌟Sunflower Admin🌟\nSunflower admin jenkins failed❌"
             cd ~/dev-server
             node noticeMommoss.js "24" "$MSG"
             '''
@@ -64,7 +67,7 @@ pipeline {
         aborted {
             sh'''#!/bin/bash
             echo "build aborted"
-            MSG="💡[Jenkins]💡\n🍀Mommoss Dev Server🍀\nMommoss dev server jenkins aborted⛔"
+            MSG="💡[Jenkins]💡\n🌟Sunflower Admin🌟\nSunflower admin jenkins aborted⛔"
             cd ~/dev-server
             node noticeMommoss.js "24" "$MSG"
             '''
