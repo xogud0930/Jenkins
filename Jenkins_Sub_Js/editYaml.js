@@ -23,7 +23,7 @@ var file2 = 'latest-mac.yml';
     console.log(fileId)
     console.log('file open complete');
 
-    var data = new Buffer(YAML.stringify(macYaml));
+    var data = new Buffer.from(YAML.stringify(macYaml));
     fs.write(fileId, data, 0, data.length, null, (err, length) => {
       if(err) throw err;
       fs.close(fileId, () => {

@@ -38,7 +38,6 @@ const addVersion = (flavor, token) => {
     body: versionInfo,
     json: true
   }, (err, res, body) => {
-
     console.log(body)
   })
 }

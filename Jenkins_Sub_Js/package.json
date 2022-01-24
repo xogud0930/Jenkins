@@ -16,6 +16,11 @@
     "request": "^2.88.2",
     "ws": "^8.2.0",
     "yaml": "^1.10.2",
-    "yaml2json": "^1.0.2"
+    "yaml2json": "^1.0.2",
+    "app-root-path": "^3.0.0",
+    "forever-monitor": "^3.0.3",
+    "shelljs": "^0.8.4",
+    "winston": "^3.3.3",
+    "winston-daily-rotate-file": "^4.5.5"
   }
 }

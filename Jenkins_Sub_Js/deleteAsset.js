@@ -19,9 +19,9 @@ req.get({
       return lastNum;
     }
   })
-
+    
   assetArray[lastNum][2].map((id) => {
-    deleteAsset(id)
+  deleteAsset(id)
   })
 })
 
