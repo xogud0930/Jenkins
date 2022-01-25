@@ -10,7 +10,7 @@ const getRequest = (url, server) => {
   }, function(err, res, body) {
     if(err) {
       logger.error(`Restarting ${server} server...`);
-      shell.exec(`pm2 restart ${server}`);
+      shell.exec(`pm2 reload ${server}`);
 
       return 0;
     }

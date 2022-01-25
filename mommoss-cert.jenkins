@@ -26,8 +26,10 @@ pipeline {
                   UPDATE_SERVER_SECRET="${UPDATE_SERVER}:/home/ubuntu/electron-release-server/secrets"
                   MOSS_SERVER="ubuntu@ec2-52-79-180-198.ap-northeast-2.compute.amazonaws.com"
                   MOSS_SERVER_SECRET="${MOSS_SERVER}:/home/ubuntu/node/secret"
-                  API_SERVER="ubuntu@ec2-54-180-32-67.ap-northeast-2.compute.amazonaws.com"
-                  API_SERVER_SECRET="${API_SERVER}:/home/ubuntu/node/secret"
+                  LAGACY_SERVER="ubuntu@ec2-54-180-32-67.ap-northeast-2.compute.amazonaws.com"
+                  LAGACY_SERVER_SECRET="${LAGACY_SERVER}:/home/ubuntu/node/secret"
+                  API_SERVER="ubuntu@ec2-3-34-96-18.ap-northeast-2.compute.amazonaws.com"
+                  API_SERVER_SECRET="${API_SERVER}:/home/ubuntu/mommoss-api-server-ts"
 
                   RESULT=`certbot renew --dns-route53`
                   echo "$RESULT"
@@ -49,9 +51,14 @@ pipeline {
                     ssh -i $SSH_KEY $MOSS_SERVER "sudo service nginx restart"
 
                     echo "Copy key to legacy-api.mommoss.com"
+                    scp -i $SSH_KEY $CHAIN_PEM "${LAGACY_SERVER_SECRET}/fullchain.pem"
+                    scp -i $SSH_KEY $KEY_PEM "${LAGACY_SERVER_SECRET}/privkey.pem"
+                    ssh -i $SSH_KEY $LAGACY_SERVER "sudo service nginx restart"
+
+                    echo "Copy key to api.mommoss.com"
                     scp -i $SSH_KEY $CHAIN_PEM "${API_SERVER_SECRET}/fullchain.pem"
                     scp -i $SSH_KEY $KEY_PEM "${API_SERVER_SECRET}/privkey.pem"
-                    ssh -i $SSH_KEY $API_SERVER "sudo service nginx restart"
+                    ssh -i $SSH_KEY $API_SERVER "sudo service nginx reload"
 
                     ################################################################################################
                     echo "Copy key to stg.mommoss.com/mommoss-api-server-ts"
@@ -75,6 +82,8 @@ pipeline {
                   elif [[ "$RESULT" == *"(failure)"* ]]; then
                     MSG="💡[Jenkins]💡\n🔑Mommoss AutoCert🔑\nCertbot renew failed❌"
                   fi
+
+                  echo "$MSG"
 
                   cd ~/dev-server
                   node noticeMommoss.js "24" "$MSG" "2793"

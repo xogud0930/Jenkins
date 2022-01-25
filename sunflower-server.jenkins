@@ -32,7 +32,7 @@ pipeline {
 
                 JENKINS_NODE_COOKIE=dontKillMe
                 
-                pm2 restart sunflower-server
+                pm2 reload sunflower-server
                 
                 echo "git pull ok"
                 '''
