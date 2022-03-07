@@ -402,7 +402,6 @@ pipeline {
 
                         echo "Release installer uploading..."
                         MAC_DIR="/Users/ablestor/workspace/Release/$VERSION-$TODAY"
-                        echo "release installer upload..."
                         ssh $MAC_IP mkdir -p $MAC_DIR
                         ssh $MAC_IP cp -r /Users/ablestor/workspace/installer/ $MAC_DIR/
                         scp -r ./installer/win/ $MAC_IP:$MAC_DIR/
@@ -411,7 +410,6 @@ pipeline {
                         cd ../noticeMommoss
                         node ./gitRelease.js $VERSION "$CHANGELOG"
                         node ./addNewVersion.js $VERSION "$CHANGELOG"
-                        cd ..
 
                         MSG="💡[Jenkins]💡\n🐳Mommoss Electron🐳\nMommoss Electron release success🙆‍♂️"
                     elif [[ "$BRANCH" =~ "release" && "$DEL_PUSH" == "false" && "$test" == "false" ]]; then
