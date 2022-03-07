@@ -1,8 +1,8 @@
 require('dotenv').config();
 const req = require('request');
 
-const version=process.argv[2];
-var note=process.argv[3];
+const version=process.argv[2].replace(/\"/g, "");
+var note=process.argv[3].replace(/\"/g, "");
 note=note.replace(version, "");
 note=note.slice(note.indexOf('-'),note.length);
 note=note.replace(/\\n/g, "\n");
