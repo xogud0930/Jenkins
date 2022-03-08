@@ -5,7 +5,7 @@ pipeline {
         BUILD = "mommoss-electron-build"
         ACTION = "${sh(returnStdout: true, script: 'echo ${HOOK_REF%/*}')}" 
         HOOK_BRANCH = "${sh(returnStdout: true, script: 'echo ${HOOK_REF#*/}')}" 
-        BRANCH = "${params.TEST ? params.TEST_BRANCH : env.HOOK_BRANCH}"
+        BRANCH = "${params.TEST ? params.BUILD_BRANCH : env.HOOK_BRANCH}"
         MAC_IP = "ablestor@192.168.10.118"
         WIN_IP = "ablestor-pc1@192.168.10.153"
         DSM_IP = "kth@192.168.10.102"
@@ -42,13 +42,25 @@ pipeline {
                         cd ../noticeMommoss
                         node noticeMommoss.js 16298 "$MSG"
                     fi
+
+                    if [ "$TEST" == "true" ]; then
+                        MSG="💡[Jenkins]💡\n🐳Mommoss Electron🐳\nTEST BUILD\n$COMMIT_AUTHOR\n20${TODAY:0:2}-${TODAY:2:2}-${TODAY:4:2} ${TODAY:7:2}:${TODAY:9:2}:${TODAY:11:2}\n$TYPE: $BRANCH\n============Commit============\n$COMMIT_MSG\n==============================="
+                        cd ../noticeMommoss
+                        node noticeMommoss.js 16298 "$MSG"
+                    fi
                 '''
             }
         }
         stage('Parallel Build') {
-        when { expression { return env.ACTION.trim()=="heads" && env.DEL_PUSH=="false" } }
+        when {
+            anyOf {
+                expression { return params.TEST }
+                expression { return ( env.ACTION.trim()=="heads" && env.DEL_PUSH=="false" ) }
+            }
+        }
             parallel {
                 stage("mac build") {
+                when { expression { return ( params.BUILD_OS=="ALL" || params.BUILD_OS=="MAC" ) } }
                     agent { node 'mac-mini' }
                     stages {
                         stage('[mac]git clone') {
@@ -135,7 +147,7 @@ pipeline {
                                 sh '''#!/bin/bash
                                     cp -f ./$MAIN/package.json ../
 
-                                    if [ $TEST == true ]; then
+                                    if [ "$TEST" == "true" ]; then
                                         cd $MAIN
                                         echo "Test version is $VERSION_CHANGE"
                                         jq --arg v $VERSION_CHANGE '.version=$v' package.json | sponge package.json
@@ -149,7 +161,6 @@ pipeline {
                             }
                         }
                         stage('[mac]mac build') {
-                            when { expression { return params.MAC_BUILD } }
                             steps {
                                 sh '''#!/bin/bash
                                     rm -rf ../installer/mac
@@ -177,11 +188,9 @@ pipeline {
                             }
                         }
                         stage('[mac]mac signing') {
-                            when { expression { return params.MAC_BUILD } }
                             steps {
                                 sh '''#!/bin/bash
-
-                                    if [[ "$BRANCH" =~ "master" && "$TEST" == "false" ]]; then
+                                    if [[ "$BRANCH" =~ "master" || "$TEST" == "true" ]]; then
                                         cd $BUILD
                                         CHANGELOG=`cat ../$MAIN/CHANGELOG.md`
                                         
@@ -192,7 +201,7 @@ pipeline {
                                         yarn run postinstall
                                         yarn run release
 
-                                        if [ $NORTARIZATION == true ]; then
+                                        if [ "$NORTARIZATION" == "true" ]; then
                                             echo "Run mac nortarization"
                                             node nortarization.js -i
                                             node nortarization.js -m
@@ -213,15 +222,16 @@ pipeline {
                                         cp -f ./dist/$FILE4 ~/workspace/installer/mac/
                                         cp -f ../$MAIN/CHANGELOG.md ~/workspace/installer/mac/
                                         
-                                        cp ./dist/latest-mac.yml ~/workspace/editYaml/latest-mac-old.yml
-                                        cd ~/workspace/editYaml
+                                        if [ "$TEST" == "true" ]; then
+                                            cp ./dist/latest-mac.yml ~/workspace/editYaml/latest-mac-old.yml
+                                            cd ~/workspace/editYaml
 
-                                        node editYaml.js "$CHANGELOG"
-                                        cp ./latest-mac.yml ../installer/mac/latest-mac.yml
+                                            node editYaml.js "$CHANGELOG"
+                                            cp ./latest-mac.yml ../installer/mac/latest-mac.yml
 
-                                        #scp -i ~/Dev/ablestor.pem ./latest-mac.yml $UPDATE_IP:/home/ubuntu/electron-release-server/.tmp/public/
-                                        scp -i ~/Dev/ablestor.pem ./latest-mac.yml $UPDATE_IP:/home/ubuntu/electron-release-server/.tmp/public/arm/
-
+                                            #scp -i ~/Dev/ablestor.pem ./latest-mac.yml $UPDATE_IP:/home/ubuntu/electron-release-server/.tmp/public/
+                                            scp -i ~/Dev/ablestor.pem ./latest-mac.yml $UPDATE_IP:/home/ubuntu/electron-release-server/.tmp/public/arm/
+                                        fi
                                         echo -e "Date : $TODAY\nBranch : $BRANCH\nCommit : $CHANGELOG" > ~/workspace/installer/mac/commit.txt
                                     else
                                         echo "Not electron mac release"
@@ -232,6 +242,7 @@ pipeline {
                     }
                 }
                 stage('windows build') {
+                when { expression { return ( params.BUILD_OS=="ALL" || params.BUILD_OS=="WIN" ) } }
                     agent { node 'windows' }
                     stages {
                         stage('[win]git clone') {
@@ -323,7 +334,6 @@ pipeline {
                             }
                         }
                         stage('[win]windows build') {
-                            when { expression { return params.WINDOWS_BUILD } }
                             steps {
                                 bat '''@echo off
                                     cd %MAIN%
@@ -337,11 +347,10 @@ pipeline {
                             }
                         }
                         stage('[win]windows signing') {
-                            when { expression { return params.WINDOWS_BUILD } }
                             steps {
                                 powershell'''
                                     Set-PSDebug -Trace 0
-                                    if (($env:BRANCH -like "master*") -and ($env:TEST -eq "false")) {
+                                    if (($env:BRANCH -like "master*") -or ($env:TEST -eq "true")) {
                                         cd $env:BUILD
 
                                         if (Test-Path -Path "./dist/") { rm -r -force "./dist" }
@@ -378,11 +387,14 @@ pipeline {
                 sh '''#!/bin/bash
                     MSG="💡[Jenkins]💡\n🐳Mommoss Electron🐳\nMommoss Electron jenkins OK🙆‍♂️"
 
-                    if [[ "$ACTION" =~ "heads" && "$BRANCH" =~ "master" ]]; then
+                    if [[ "$ACTION" =~ "heads" && "$BRANCH" =~ "master" ]] || [ "$TEST"=="true" ]; then
                         rm -rf installer
                         mkdir installer
 
                         VERSION=`ssh $MAC_IP cat ./workspace/package.json | jq .version `
+                        if [ "$TEST" == "true ]; then
+                            VERSION="TEST-$TEST_VERSION"
+                        fi
                         DSM_DIR="/volume1/Jenkins_Build/mommoss-electron-kacpta/$BRANCH/$VERSION-$TODAY"
                         CHANGELOG=`ssh ablestor@192.168.10.118 "cat /Users/ablestor/workspace/installer/mac/CHANGELOG.md"`
 
@@ -407,9 +419,11 @@ pipeline {
                         scp -r ./installer/win/ $MAC_IP:$MAC_DIR/
                         echo "Release installer upload success"
 
-                        cd ../noticeMommoss
-                        node ./gitRelease.js $VERSION "$CHANGELOG"
-                        node ./addNewVersion.js $VERSION "$CHANGELOG"
+                        if [[ "$TEST" == "false" ]]; then
+                            cd ../noticeMommoss
+                            node ./gitRelease.js $VERSION "$CHANGELOG"
+                            node ./addNewVersion.js $VERSION "$CHANGELOG"
+                        fi
 
                         MSG="💡[Jenkins]💡\n🐳Mommoss Electron🐳\nMommoss Electron release success🙆‍♂️"
                     elif [[ "$BRANCH" =~ "release" && "$DEL_PUSH" == "false" && "$test" == "false" ]]; then
